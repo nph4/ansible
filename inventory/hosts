@@ -1,0 +1,8 @@
+[pis]
+pi.hole
+ansible.local
+[ubuntu]
+nelson-nuc
+vm-q-ubnt-dh01
+[proxmox]
+quarks
