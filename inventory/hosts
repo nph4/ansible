@@ -1,12 +1,14 @@
 [all:vars]
 ansible_user='riker'
-ansible_become=yes
-ansible_become_method=sudo
 ansible_python_interpreter='/usr/bin/env python3'
 [pis]
+ansible_become=yes
+ansible_become_method=sudo
 pi.hole
 ansible.local
 [ubuntu]
+ansible_become=yes
+ansible_become_method=sudo
 nelson-nuc
 vm-q-ubnt-dh01
 [proxmox]
