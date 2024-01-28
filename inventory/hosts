@@ -1,3 +1,8 @@
+[all:vars]
+ansible_user='riker'
+ansible_become=yes
+ansible_become_method=sudo
+ansible_python_interpreter='/usr/bin/env python3'
 [pis]
 pi.hole
 ansible.local
