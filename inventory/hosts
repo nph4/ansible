@@ -2,8 +2,6 @@
 ansible_user='riker'
 ansible_python_interpreter='/usr/bin/env python3'
 [pis]
-ansible_become=yes
-ansible_become_method=sudo
 pi.hole
 ansible.local
 [ubuntu]

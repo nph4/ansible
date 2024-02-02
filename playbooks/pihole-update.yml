@@ -1,5 +1,8 @@
 - name: Update pihole
   hosts: "pis"
+  become: true
+  become_user: riker
+  become_method: sudo
   tasks:
     - name: pihole updates
       shell: pihole -up
