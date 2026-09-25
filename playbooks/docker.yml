@@ -1,0 +1,75 @@
+# Install Docker Engine + the compose v2 plugin and add the login user to the docker group.
+#
+# Fresh hosts get Docker's official apt repo (same as nelson-nuc). Hosts that already have Docker keep
+# their engine and only get the matching compose v2 plugin: docker-compose-plugin for docker-ce,
+# Ubuntu's docker-compose-v2 for docker.io (quark-vm) - swapping engines would stop running containers.
+#
+# Needs sudo; pass -K if the host has no passwordless sudo.
+- name: Install Docker
+  hosts: docker
+  become: true
+  vars:
+    docker_user: "{{ ansible_user }}"
+  tasks:
+    # package_facts needs python3-apt and deb822_repository needs python3-debian; minimal installs can lack both
+    - name: Install Ansible's apt helpers
+      apt:
+        name:
+          - python3-apt
+          - python3-debian
+        update_cache: true
+
+    - name: Check installed Docker packages
+      package_facts:
+
+    - name: Install Docker from Docker's apt repo
+      when: "'docker-ce' not in ansible_facts.packages and 'docker.io' not in ansible_facts.packages"
+      block:
+        - name: Add Docker apt repo
+          deb822_repository:
+            name: docker
+            types: deb
+            uris: "https://download.docker.com/linux/{{ ansible_facts.distribution | lower }}"
+            suites: "{{ ansible_facts.distribution_release }}"
+            components: stable
+            architectures: "{{ 'amd64' if ansible_facts.architecture == 'x86_64' else 'arm64' }}"
+            signed_by: "https://download.docker.com/linux/{{ ansible_facts.distribution | lower }}/gpg"
+
+        - name: Install Docker Engine
+          apt:
+            name:
+              - docker-ce
+              - docker-ce-cli
+              - containerd.io
+              - docker-buildx-plugin
+              - docker-compose-plugin
+            update_cache: true
+
+    - name: Install compose v2 plugin for docker-ce
+      apt:
+        name: docker-compose-plugin
+      when: "'docker-ce' in ansible_facts.packages"
+
+    - name: Install compose v2 plugin for Ubuntu's docker.io
+      apt:
+        name: docker-compose-v2
+        update_cache: true
+      when: "'docker.io' in ansible_facts.packages"
+
+    - name: Make sure Docker is running
+      systemd:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Add the login user to the docker group
+      user:
+        name: "{{ docker_user }}"
+        groups: docker
+        append: true
+      register: docker_group
+
+    # Group membership only applies to new SSH sessions
+    - name: Reconnect so docker group membership takes effect
+      meta: reset_connection
+      when: docker_group is changed

@@ -1,0 +1,32 @@
+## Managed by Ansible (playbooks/komodo-periphery.yml) - local edits will be overwritten.
+## Standalone Komodo Periphery agent connecting outbound to Core on nelson-nuc.
+
+services:
+  periphery:
+    image: ghcr.io/moghtech/komodo-periphery:{{ komodo_version }}
+    init: true
+    restart: unless-stopped
+    env_file: ./compose.env
+    environment:
+      TZ: {{ komodo_timezone }}
+      PERIPHERY_CORE_ADDRESS: {{ komodo_core_address }}
+      PERIPHERY_CONNECT_AS: {{ komodo_server_name }}
+      PERIPHERY_CORE_PUBLIC_KEYS: file:/config/keys/core.pub
+      PERIPHERY_ROOT_DIRECTORY: {{ komodo_root_dir }}
+      PERIPHERY_DISABLE_TERMINALS: "false"
+      PERIPHERY_DISABLE_CONTAINER_EXEC: "false"
+      PERIPHERY_INCLUDE_DISK_MOUNTS: /etc/hostname
+    volumes:
+      ## Periphery keypair + Core public key, written during onboarding
+      - keys:/config/keys
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /proc:/proc
+      ## Must be the same path inside and outside the container
+      - {{ komodo_root_dir }}:{{ komodo_root_dir }}
+{% if komodo_mount_containers_dir %}
+      ## Lets Periphery's compose subprocess resolve absolute-path env_file/secrets
+      - {{ komodo_containers_dir }}:{{ komodo_containers_dir }}:ro
+{% endif %}
+
+volumes:
+  keys:

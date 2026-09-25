@@ -1,0 +1,142 @@
+# Deploy a Komodo Periphery agent to a docker host and onboard it to Core on nelson-nuc.
+#
+# First run on a new host needs a privileged onboarding key created in Komodo Core:
+#   ansible-playbook -i inventory/hosts playbooks/komodo-periphery.yml -l <host> -K -e komodo_onboarding_key=<key>
+# Later runs (upgrades, config changes) don't need the key. Delete the key in Core once onboarding succeeds.
+#
+# Don't target nelson-nuc: its Periphery runs inside the Core compose project.
+
+# Installs Docker + compose v2 first (needs sudo: add -K if the host has no passwordless sudo)
+- import_playbook: docker.yml
+
+- name: Deploy Komodo Periphery
+  hosts: komodo_periphery
+  gather_facts: true
+  vars:
+    # Everything lives in the login user's home so no sudo is needed (user must be in the docker group)
+    ansible_become: false
+    # Must match the Core version on nelson-nuc
+    komodo_version: "2.3.3"
+    # Core's Tailscale-bound address, so the host needs to be on the tailnet
+    komodo_core_address: "100.69.15.50:9120"
+    komodo_server_name: "{{ inventory_hostname_short }}"
+    komodo_timezone: America/Los_Angeles
+    komodo_containers_dir: "{{ ansible_facts.user_dir }}/containers"
+    komodo_dir: "{{ komodo_containers_dir }}/komodo-periphery"
+    komodo_root_dir: "{{ komodo_dir }}/root"
+    komodo_project: komodo-periphery
+    # Enable when a stack on this host uses an absolute-path env_file/secrets under ~/containers
+    komodo_mount_containers_dir: false
+    komodo_onboarding_key: ""
+
+  tasks:
+    - name: Check docker compose v2 is available
+      command: docker compose version
+      changed_when: false
+      register: compose_check
+      check_mode: false
+      failed_when: false
+
+    - name: Fail if docker or the compose plugin is missing
+      fail:
+        msg: "`docker compose version` failed for {{ ansible_facts.user_id }}: install Docker Engine with the compose v2 plugin and add the user to the docker group."
+      when: compose_check.rc != 0
+
+    - name: Check Komodo Core is reachable
+      wait_for:
+        host: "{{ komodo_core_address.split(':')[0] }}"
+        port: "{{ komodo_core_address.split(':')[1] }}"
+        timeout: 10
+      check_mode: false
+
+    # Onboarding writes Core's public key into the keys volume; checking the file (not just the volume)
+    # catches a previous run that created the volume but failed to onboard
+    - name: Check whether this host is already onboarded
+      # volume inspect first so docker run doesn't create the volume outside compose
+      shell: >-
+        docker volume inspect {{ komodo_project }}_keys >/dev/null 2>&1 &&
+        docker run --rm --entrypoint test -v {{ komodo_project }}_keys:/k
+        ghcr.io/moghtech/komodo-periphery:{{ komodo_version }} -f /k/core.pub
+      changed_when: false
+      failed_when: false
+      register: core_pub
+      check_mode: false
+
+    - name: Set onboarding state
+      set_fact:
+        komodo_needs_onboarding: "{{ core_pub.rc != 0 }}"
+
+    - name: Fail if onboarding is needed but no key was given
+      fail:
+        msg: "{{ inventory_hostname }} is not onboarded yet. Create a privileged onboarding key in Komodo Core and rerun with -e komodo_onboarding_key=<key>."
+      when: komodo_needs_onboarding and komodo_onboarding_key == ""
+
+    - name: Create Periphery directories
+      file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0775"
+      loop:
+        - "{{ komodo_containers_dir }}"
+        - "{{ komodo_dir }}"
+        - "{{ komodo_root_dir }}"
+
+    - name: Write compose file
+      template:
+        src: ../templates/komodo-periphery/compose.yml.j2
+        dest: "{{ komodo_dir }}/compose.yml"
+        mode: "0664"
+
+    - name: Write env file
+      copy:
+        content: "{{ 'PERIPHERY_ONBOARDING_KEY=' ~ komodo_onboarding_key ~ '\n' if komodo_needs_onboarding else '' }}"
+        dest: "{{ komodo_dir }}/compose.env"
+        mode: "0600"
+      no_log: true
+
+    - name: Start Periphery
+      community.docker.docker_compose_v2:
+        project_src: "{{ komodo_dir }}"
+        project_name: "{{ komodo_project }}"
+        pull: missing
+        state: present
+      # On a first-run dry run the project directory doesn't exist yet
+      when: not (ansible_check_mode and komodo_needs_onboarding)
+
+    - name: Onboard with Core
+      when: komodo_needs_onboarding and not ansible_check_mode
+      block:
+        - name: Wait for onboarding to succeed
+          shell: docker compose -p {{ komodo_project }} logs periphery 2>&1
+          args:
+            chdir: "{{ komodo_dir }}"
+          register: periphery_logs
+          until: "'onboarding flow for' in periphery_logs.stdout and 'successful' in periphery_logs.stdout"
+          retries: 12
+          delay: 5
+          changed_when: false
+
+        - name: Remove the onboarding key from the env file
+          copy:
+            content: ""
+            dest: "{{ komodo_dir }}/compose.env"
+            mode: "0600"
+
+        - name: Recreate Periphery without the onboarding key
+          community.docker.docker_compose_v2:
+            project_src: "{{ komodo_dir }}"
+            project_name: "{{ komodo_project }}"
+            recreate: always
+            state: present
+
+        - name: Remind to delete the onboarding key
+          debug:
+            msg: "{{ komodo_server_name }} onboarded. Delete the onboarding key in Komodo Core."
+
+    - name: Check Periphery is running
+      command: docker inspect -f '{{ '{{' }}.State.Running{{ '}}' }} {{ '{{' }}.RestartCount{{ '}}' }}' {{ komodo_project }}-periphery-1
+      register: periphery_state
+      check_mode: false
+      when: not ansible_check_mode
+      changed_when: false
+      failed_when: periphery_state.stdout.split()[0] != 'true'
