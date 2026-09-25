@@ -2,12 +2,13 @@
 ansible_user='riker'
 ansible_python_interpreter='/usr/bin/env python3'
 [pis]
-pi.hole
-ansible.local
+pihole.lan
+ansible.lan
 [ubuntu]
+nelson-nuc.lan
+quark-vm.lan
+[ubuntu:vars]
 ansible_become=yes
 ansible_become_method=sudo
-nelson-nuc
-vm-q-ubnt-dh01
 [proxmox]
-quarks
+quarks.lan
