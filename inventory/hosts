@@ -1,5 +1,5 @@
 [all:vars]
-ansible_user='riker'
+ansible_user='ansible'
 ansible_python_interpreter='/usr/bin/env python3'
 [pis]
 pihole.lan
@@ -7,14 +7,12 @@ ansible.lan
 [ubuntu]
 nelson-nuc.lan
 quark-vm.lan
-[ubuntu:vars]
-ansible_become=yes
-ansible_become_method=sudo
-[proxmox]
-quarks.lan
 # Docker hosts running a standalone Komodo Periphery (playbooks/komodo-periphery.yml).
 # Not nelson-nuc: its Periphery is part of the Core compose project.
 [komodo_periphery]
 # Hosts that get Docker Engine + compose v2 from playbooks/docker.yml
 [docker:children]
 komodo_periphery
+[docker:vars]
+# Account added to the docker group, and that Periphery runs as; set per host once it exists
+docker_user='CHANGEME'

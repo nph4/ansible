@@ -1,0 +1,37 @@
+# One-time setup of the `ansible` automation user: SSH key login + passwordless sudo.
+#
+# Run from a machine that can already log in (the old Pi control node or a workstation), as an existing account:
+#   ansible-playbook playbooks/bootstrap.yml -l <host> -e ansible_user=<existing user> -K
+#
+# Afterwards every other playbook connects as `ansible` from the control container on nelson-nuc.
+- name: Bootstrap the ansible automation user
+  hosts: all
+  become: true
+  vars:
+    automation_user: ansible
+    automation_pubkey_file: "{{ playbook_dir }}/../files/ansible_ed25519.pub"
+    # Only the control container may use the key; its LAN traffic is NATed to nelson-nuc's address
+    automation_key_from: 192.168.88.101
+  tasks:
+    # useradd leaves the password locked, so the account can only log in with the key
+    - name: Create the automation user
+      user:
+        name: "{{ automation_user }}"
+        shell: /bin/bash
+        create_home: true
+
+    - name: Install the control container's SSH key
+      authorized_key:
+        user: "{{ automation_user }}"
+        key: "{{ lookup('file', automation_pubkey_file) }}"
+        key_options: 'from="{{ automation_key_from }}"'
+        exclusive: true
+
+    - name: Allow passwordless sudo
+      copy:
+        content: "{{ automation_user }} ALL=(ALL) NOPASSWD: ALL\n"
+        dest: "/etc/sudoers.d/{{ automation_user }}"
+        owner: root
+        group: root
+        mode: "0440"
+        validate: visudo -cf %s

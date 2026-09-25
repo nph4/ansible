@@ -1,20 +1,21 @@
 # Deploy a Komodo Periphery agent to a docker host and onboard it to Core on nelson-nuc.
 #
 # First run on a new host needs a privileged onboarding key created in Komodo Core:
-#   ansible-playbook -i inventory/hosts playbooks/komodo-periphery.yml -l <host> -K -e komodo_onboarding_key=<key>
+#   ansible-playbook -i inventory/hosts playbooks/komodo-periphery.yml -l <host> -e komodo_onboarding_key=<key>
 # Later runs (upgrades, config changes) don't need the key. Delete the key in Core once onboarding succeeds.
 #
 # Don't target nelson-nuc: its Periphery runs inside the Core compose project.
 
-# Installs Docker + compose v2 first (needs sudo: add -K if the host has no passwordless sudo)
+# Installs Docker + compose v2 first
 - import_playbook: docker.yml
 
 - name: Deploy Komodo Periphery
   hosts: komodo_periphery
   gather_facts: true
+  # Everything runs as docker_user (set in the inventory) and lives in its home, not the ansible user's
+  become: true
+  become_user: "{{ docker_user }}"
   vars:
-    # Everything lives in the login user's home so no sudo is needed (user must be in the docker group)
-    ansible_become: false
     # Must match the Core version on nelson-nuc
     komodo_version: "2.3.3"
     # Core's Tailscale-bound address, so the host needs to be on the tailnet

@@ -1,22 +1,31 @@
-# Install Docker Engine + the compose v2 plugin and add the login user to the docker group.
+# Install Docker Engine + the compose v2 plugin and add docker_user (set in the inventory) to the docker group.
 #
 # Fresh hosts get Docker's official apt repo (same as nelson-nuc). Hosts that already have Docker keep
 # their engine and only get the matching compose v2 plugin: docker-compose-plugin for docker-ce,
 # Ubuntu's docker-compose-v2 for docker.io (quark-vm) - swapping engines would stop running containers.
-#
-# Needs sudo; pass -K if the host has no passwordless sudo.
 - name: Install Docker
   hosts: docker
   become: true
-  vars:
-    docker_user: "{{ ansible_user }}"
   tasks:
-    # package_facts needs python3-apt and deb822_repository needs python3-debian; minimal installs can lack both
+    - name: Fail if docker_user is still the inventory placeholder
+      fail:
+        msg: "Set docker_user for {{ inventory_hostname }} in the inventory to the account that will run containers."
+      when: docker_user == 'CHANGEME'
+
+    # The user module below would silently create a missing account
+    - name: Check docker_user exists
+      getent:
+        database: passwd
+        key: "{{ docker_user }}"
+
+    # package_facts needs python3-apt, deb822_repository needs python3-debian, and becoming an unprivileged
+    # user (komodo-periphery.yml) needs acl; minimal installs can lack all three
     - name: Install Ansible's apt helpers
       apt:
         name:
           - python3-apt
           - python3-debian
+          - acl
         update_cache: true
 
     - name: Check installed Docker packages
@@ -62,7 +71,7 @@
         state: started
         enabled: true
 
-    - name: Add the login user to the docker group
+    - name: Add docker_user to the docker group
       user:
         name: "{{ docker_user }}"
         groups: docker
