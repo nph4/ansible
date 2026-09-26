@@ -35,8 +35,8 @@ On Ubuntu 26.04+ (e.g. kirks-bar), `sudo` is sudo-rs, and the bootstrap fails wi
 | Group | Hosts | Purpose |
 |---|---|---|
 | `pis` | Pi-hole boxes | `pihole-update.yml` |
-| `ubuntu` | nelson-nuc, quark-vm | `updates.yml` |
-| `komodo_periphery` | docker hosts running a standalone Periphery | `komodo-periphery.yml` |
+| `ubuntu` | nelson-nuc, quark-vm, kirks-bar | `updates.yml` |
+| `komodo_periphery` | docker hosts running a standalone Periphery (kirks-bar) | `komodo-periphery.yml` |
 | `docker` | children: `komodo_periphery` | `docker.yml` |
 
 `quark-vm.lan` is a CNAME for `quarks.lan`, so it's listed only once.

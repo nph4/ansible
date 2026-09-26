@@ -12,6 +12,7 @@ kirks-bar.lan
 # Docker hosts running a standalone Komodo Periphery (playbooks/komodo-periphery.yml).
 # Not nelson-nuc: its Periphery is part of the Core compose project.
 [komodo_periphery]
+kirks-bar.lan docker_user='kirk'
 # Hosts that get Docker Engine + compose v2 from playbooks/docker.yml
 [docker:children]
 komodo_periphery
