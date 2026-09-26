@@ -26,6 +26,8 @@ New hosts are set up once with `playbooks/bootstrap.yml`, run as an existing acc
 ansible-playbook playbooks/bootstrap.yml -l <host> -e ansible_user=<existing user> -K
 ```
 
+On Ubuntu 26.04+ (e.g. kirks-bar), `sudo` is sudo-rs, and the bootstrap fails with `Timeout (12s) waiting for privilege escalation prompt` because Ansible doesn't see its password prompt. Add `-e ansible_become_exe=sudo.ws` to use the original sudo, which Ubuntu still ships. Only the bootstrap needs this: afterwards the `ansible` user's sudo is passwordless, so there's no prompt.
+
 ## Inventory
 
 `inventory/hosts` is an INI inventory. `[all:vars]` defaults every host to user `ansible` and `python3`.
