@@ -1,5 +1,74 @@
 # ansible
-Ansible playbooks
 
-loosley based off of techno-tim's launchpad repo
-https://github.com/techno-tim/launchpad
+Home-lab Ansible playbooks, loosely based on techno-tim's [launchpad](https://github.com/techno-tim/launchpad) repo. No roles, collections, or lint/test tooling — just an inventory, standalone playbooks, and templates.
+
+## Usage
+
+`ansible.cfg` sets the inventory, so run from the repo root:
+
+```sh
+ansible-playbook playbooks/<playbook>.yml
+ansible-playbook playbooks/<playbook>.yml --check --diff   # dry run
+ansible-playbook playbooks/<playbook>.yml --limit <host>   # single host
+ansible-playbook playbooks/<playbook>.yml --syntax-check
+ansible-inventory --graph                                  # verify group parsing
+```
+
+## Authentication
+
+Every host is managed as a dedicated `ansible` user: SSH key only, passwordless sudo via `/etc/sudoers.d/ansible`, so no `-k`/`-K`. Plays set `become: true` themselves; nothing enables it from the inventory.
+
+The control node is the `ansible` container on nelson-nuc (Homelab-IaC `stacks/nelson-nuc/ansible`), which replaces the old Pi (`ansible.lan`). Its private key lives on nelson-nuc in `~/containers/ansible/ssh/` (bind-mounted as the container's `/root/.ssh`, with `known_hosts`); the public key is committed as `files/ansible_ed25519.pub`. `authorized_keys` restricts it with `from="192.168.88.101"` (container traffic is NATed to nelson-nuc's LAN IP), so the key doesn't work from anywhere else. nelson-nuc itself overrides this with `automation_key_from` in the inventory, since the container reaches its own host from its Docker network.
+
+New hosts are set up once with `playbooks/bootstrap.yml`, run as an existing account from a machine that can already log in:
+
+```sh
+ansible-playbook playbooks/bootstrap.yml -l <host> -e ansible_user=<existing user> -K
+```
+
+## Inventory
+
+`inventory/hosts` is an INI inventory. `[all:vars]` defaults every host to user `ansible` and `python3`.
+
+| Group | Hosts | Purpose |
+|---|---|---|
+| `pis` | Pi-hole boxes | `pihole-update.yml` |
+| `ubuntu` | nelson-nuc, quark-vm | `updates.yml` |
+| `komodo_periphery` | docker hosts running a standalone Periphery | `komodo-periphery.yml` |
+| `docker` | children: `komodo_periphery` | `docker.yml` |
+
+`quark-vm.lan` is a CNAME for `quarks.lan`, so it's listed only once.
+
+## Playbooks
+
+| Playbook | Targets | What it does |
+|---|---|---|
+| `bootstrap.yml` | `-l <host>` | One-time creation of the `ansible` user (see Authentication). |
+| `updates.yml` | `ubuntu` | apt dist-upgrade, reboot if required. |
+| `pihole-update.yml` | `pis` | Updates Pi-hole. |
+| `timezone.yml` | all hosts | Sets the timezone and configures timesyncd. |
+| `docker.yml` | `docker` | Installs Docker + compose v2 and adds `docker_user` to the docker group. |
+| `komodo-periphery.yml` | `komodo_periphery` | Deploys a standalone Komodo Periphery agent. |
+
+### docker.yml
+
+`docker_user` is `CHANGEME` in `[docker:vars]` until the host's account exists; set it per host. The play refuses the placeholder or a missing account.
+
+Fresh hosts get Docker's official apt repo (like nelson-nuc). Hosts that already have Docker keep their engine and only get the matching compose plugin — `docker-compose-plugin` for docker-ce, Ubuntu's `docker-compose-v2` for docker.io (like quark-vm) — since swapping engines would stop running containers.
+
+### komodo-periphery.yml
+
+Runs Periphery as `docker_user` (compose project in that user's `~/containers/komodo-periphery`), connecting outbound to Komodo Core on nelson-nuc over Tailscale. Imports `docker.yml` first.
+
+- First run on a host needs a privileged onboarding key created in Core: `-e komodo_onboarding_key=<key>`. Later runs don't; delete the key in Core once onboarding succeeds. Onboarding state is detected from `core.pub` in the `keys` volume.
+- `komodo_version` must match Core.
+- Never target nelson-nuc — its Periphery is part of the Core compose project.
+
+Background lives in the Homelab-IaC repo's `Komodo-PoC.md` / `Komodo-Migration.md`.
+
+## Layout
+
+- `inventory/hosts` — the inventory.
+- `playbooks/` — one playbook per task; each targets a group via `hosts:`.
+- `files/` — static files for playbooks; `ansible_ed25519.pub` is the control container's public key.
+- `templates/` — Jinja templates, referenced from playbooks with paths relative to the playbook dir (e.g. `src=../templates/timesyncd.conf`). `timesyncd.conf` points NTP at the local server `192.168.88.101`, falling back to `time.cloudflare.com`.
