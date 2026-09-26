@@ -1,6 +1,6 @@
 [all:vars]
 ansible_user='ansible'
-ansible_python_interpreter='/usr/bin/env python3'
+ansible_python_interpreter='/usr/bin/python3'
 [pis]
 pihole.lan
 ansible.lan

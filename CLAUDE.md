@@ -13,4 +13,5 @@
 - Plays set `become: true` themselves — don't add `ansible_become` to the inventory.
 - Don't list `quarks.lan` alongside `quark-vm.lan`; they're the same host.
 - Never add nelson-nuc to `[komodo_periphery]`.
+- `ansible_python_interpreter` must be a plain path (`/usr/bin/python3`), not `/usr/bin/env python3`: current ansible-core treats the whole value as one executable name.
 - Template `src:` paths are relative to the playbook dir (`../templates/...`).
